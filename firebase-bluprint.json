@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores student profile information and identity verification.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "collegeName": { "type": "string" },
+        "profilePhoto": { "type": "string" },
+        "course": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        }
+      },
+      "required": ["fullName", "registrationNumber", "collegeName"]
+    },
+    "HelpPost": {
+      "title": "Help Request Post",
+      "description": "A request for a small help within the community.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "urgency": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "location": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "in-progress", "resolved", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "category", "urgency", "creatorId", "status", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation Thread",
+      "description": "A chat thread between two users regarding a help post.",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "postId": { "type": "string" },
+        "postTitle": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["participants", "postId", "updatedAt"]
+    },
+    "Message": {
+      "title": "ChatMessage",
+      "description": "An individual message within a conversation.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Public (limited) and private profiles of users."
+    },
+    "/registrationNumbers/{regNum}": {
+      "schema": { "type": "object", "properties": { "userId": { "type": "string" } } },
+      "description": "Used to enforce uniqueness of registration numbers."
+    },
+    "/helpPosts/{postId}": {
+      "schema": "HelpPost",
+      "description": "Collection of all help requests."
+    },
+    "/conversations/{convId}": {
+      "schema": "Conversation",
+      "description": "Chat sessions metadata."
+    },
+    "/conversations/{convId}/messages/{msgId}": {
+      "schema": "Message",
+      "description": "Subcollection of messages in a conversation."
+    }
+  }
+}
