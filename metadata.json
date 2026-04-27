@@ -1,0 +1,8 @@
+{
+  "name": "Instant Help Network",
+  "description": "A mobile-first platform for students to request and offer small help within their nearby community in real-time.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
