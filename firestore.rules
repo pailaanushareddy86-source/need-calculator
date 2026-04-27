@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definitions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper to check if a user is a participant in a conversation
+    function isParticipant(convId) {
+      return isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 100 &&
+               data.registrationNumber is string && data.registrationNumber.size() > 0 && data.registrationNumber.size() <= 50 &&
+               data.collegeName is string && data.collegeName.size() > 0 && data.collegeName.size() <= 100;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.registrationNumber == null; // Prevent scraping all users, but allow finding specific ones if needed? Actually better to restrict.
+      
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) &&
+                    existsAfter(/databases/$(database)/documents/registrationNumbers/$(incoming().registrationNumber));
+      
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) &&
+                    incoming().registrationNumber == existing().registrationNumber &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'collegeName', 'profilePhoto', 'course', 'location', 'phone']);
+    }
+
+    // 2. Registration Numbers (Uniqueness Guard)
+    match /registrationNumbers/{regNum} {
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(regNum) &&
+                    !exists(/databases/$(database)/documents/registrationNumbers/$(regNum)) &&
+                    incoming().userId == request.auth.uid;
+    }
+
+    // 3. Help Posts
+    match /helpPosts/{postId} {
+      function isValidPost(data) {
+        return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+               data.description is string && data.description.size() > 0 && data.description.size() <= 2000 &&
+               data.category is string &&
+               data.urgency in ['low', 'medium', 'high', 'critical'] &&
+               data.status in ['open', 'in-progress', 'resolved', 'cancelled'] &&
+               data.creatorId == request.auth.uid;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidPost(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && (
+        // Owner can update fields
+        (request.auth.uid == existing().creatorId && 
+         incoming().creatorId == existing().creatorId &&
+         incoming().createdAt == existing().createdAt &&
+         (
+           // Action: Edit
+           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'urgency', 'location', 'status', 'updatedAt'])
+         )
+        ) ||
+        // Others can only mark as in-progress (maybe? Or maybe only via owner action)
+        // Let's say only owner can change status for now to keep it simple, or 'in-progress' if they are assigned.
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status == 'in-progress')
+      );
+      allow delete: if isSignedIn() && request.auth.uid == existing().creatorId;
+    }
+
+    // 4. Conversations
+    match /conversations/{convId} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow create: if isSignedIn() && request.auth.uid in incoming().participants && incoming().participants.size() == 2;
+      allow update: if isSignedIn() && request.auth.uid in existing().participants && 
+                    incoming().participants == existing().participants &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'updatedAt']);
+    }
+
+    // 5. Messages (Subcollection)
+    match /conversations/{convId}/messages/{msgId} {
+      allow read: if isParticipant(convId);
+      allow create: if isParticipant(convId) && incoming().senderId == request.auth.uid && incoming().createdAt == request.time;
+    }
+  }
+}
